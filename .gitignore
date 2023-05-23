@@ -1,0 +1,4 @@
+*.par
+*.sh
+out/
+__pycache__
