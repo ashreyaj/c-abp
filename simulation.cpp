@@ -51,11 +51,14 @@ const double PI = 3.14159265359;
 const double kT = 1.0;
 
 string outdir;
+string potential;
 double Phi;
 int N;
 double sig;
-double rcut;
 double eps;
+double rcut;
+double whdf_rcut;
+double whdf_eps;
 double frcut;
 double al;
 double vexp;
@@ -72,6 +75,10 @@ double t0;
 double l0;
 
 double rcut2;
+double whdf_rcut2;
+double whdf_sig;
+double whdf_rc2_sig2;
+double whdf_alpha;
 double rin2;
 double rout2;
 double frcut2;
@@ -98,10 +105,13 @@ void readParameters(const char* ParameterFile)
 		stringstream DATA(line);
 		DATA >> param >> value;
 		if (param=="outdir") {outdir=value;}
+		else if (param=="potential") {potential=value;}
 		else if (param=="phi") {Phi=stod(value);}
 		else if (param=="sig") {sig=stod(value);}
-		else if (param=="rcut") {rcut=stod(value);}
 		else if (param=="eps") {eps=stod(value);}
+		else if (param=="rcut") {rcut=stod(value);}
+		else if (param=="whdf_rcut") {whdf_rcut=stod(value);}
+		else if (param=="whdf_eps") {whdf_eps=stod(value);}
 		else if (param=="frcut") {frcut=stod(value);}
 		else if (param=="al") {al=stod(value);}
 		else if (param=="v0") {vexp=stod(value);}
@@ -121,6 +131,10 @@ void readParameters(const char* ParameterFile)
 	// derived parameters
 	v0 = vexp*1e-6*t0/l0;
 	rcut2 = rcut*rcut;
+	whdf_rcut2 = whdf_rcut*whdf_rcut;
+	whdf_sig = whdf_rcut*rcut*sqrt(2.0/(3*whdf_rcut2-rcut2));
+	whdf_rc2_sig2 = whdf_rcut2/(whdf_sig*whdf_sig);
+	whdf_alpha = 2*whdf_rc2_sig2*(3/(2*(whdf_rc2_sig2-1)))*(3/(2*(whdf_rc2_sig2-1)))*(3/(2*(whdf_rc2_sig2-1)));
 	frcut2 = frcut*frcut;
 	rin2 = rcon*rcon;
 	rout2 = (rcon+width)*(rcon+width);
@@ -129,6 +143,8 @@ void readParameters(const char* ParameterFile)
 	rdiff = sqrt(3*2*dt/taur);
 	run_steps = static_cast<unsigned long int>(run/dt);
 	cycle_steps = static_cast<unsigned long int>(cycle/dt);
+
+	cout << "Read in parameters" << endl;
 }
 
 // --- Initialize particles ----
@@ -137,7 +153,7 @@ void initialize(int N, double rcon)
 	default_random_engine generator;
 	uniform_real_distribution<double> theta_distribution(0.0,2.0*PI);
 
-	double N_full = static_cast<int>(1.0*circumference/sig);
+	double N_full = static_cast<int>(1.0*circumference/rcut);
 	if (N>N_full) // overpacking
 	{
 		std::vector<double> ang = linspace(0.0, 2*PI, N_full);
@@ -151,8 +167,8 @@ void initialize(int N, double rcon)
 		std::vector<double> ang2 = linspace(0.0, 2*PI, N_rem);
 		for (int i=0;i<N_rem;i++)
 		{
-			x.push_back((rcon+sig)*cos(ang2[i]));
-			y.push_back((rcon+sig)*sin(ang2[i]));
+			x.push_back((rcon+rcut)*cos(ang2[i]));
+			y.push_back((rcon+rcut)*sin(ang2[i]));
 			phi.push_back(theta_distribution(generator));
 		}
 	}
@@ -167,6 +183,8 @@ void initialize(int N, double rcon)
 			phi.push_back(theta_distribution(generator));
 		}
 	}
+	cout << "Potential: " << potential << endl;
+	cout << "Initialization completed" << endl;
 }
 
 // ---- Confinement ----
@@ -211,7 +229,7 @@ void wca_neigh()
 			double r2 = (dr[0]*dr[0]) + (dr[1]*dr[1]);
 			if (r2<rcut2)
 			{
-				double r6i = 1.0 /(r2 * r2 * r2);
+				double r6i = 1 /(r2 * r2 * r2);
 				double fij = 48 * eps * (r6i * r6i - 0.5 * r6i);
 				for (int k=0;k<2;k++)
 				{
@@ -231,6 +249,58 @@ void wca_neigh()
 	}
 }
 
+// ---- WCA potential + short-ranged attraction and neighbours ----
+void att_neigh()
+{
+	for(int i=0;i<N;i++)
+	{
+		fwca[i][0]=0.0; // reset forces and neighbours to 0
+		fwca[i][1]=0.0;
+		neigh[i] = 0;
+	} 
+	vector<double> dr(2, 0.0);
+	for(int i=0;i<N;i++)
+	{
+		for (int j=0;j<i;j++)
+		{
+			// glued potential - hard-core WCA repulsion + short-ranged attraction
+			dr[0] = x[i]-x[j];
+			dr[1] = y[i]-y[j];
+
+			double r2 = (dr[0]*dr[0]) + (dr[1]*dr[1]);
+			if (r2<rcut2) // WCA
+			{
+				double r6i = 1 / (r2 * r2 * r2);
+				double fij = 48 * eps * (r6i * r6i - 0.5 * r6i);
+				for (int k=0;k<2;k++)
+				{
+					fwca[i][k] += dr[k] * (fij / r2);
+					fwca[j][k] -= dr[k] * (fij / r2);
+				}
+				
+			}
+			else if ((r2>=rcut2)&&(r2<whdf_rcut2)) // WHDF attraction
+			{
+				double r2i = 1 / r2;
+				double r4i = r2i * r2i;
+				double fij = 2 * whdf_eps * whdf_alpha * (whdf_rcut2 * r2i - 1) * (2 * whdf_rcut2 * r4i * (whdf_sig * whdf_sig * r2i - 1)+ whdf_sig * whdf_sig * r4i * (whdf_rcut2 * r2i - 1));
+				for (int k=0;k<2;k++)
+				{
+					fwca[i][k] += dr[k] * fij;
+					fwca[j][k] -= dr[k] * fij;
+				}
+			}
+
+			// neighbours
+			if (r2<frcut2)
+			{
+				neigh[i] += 1;
+				neigh[j] += 1;
+			}
+		}
+	}
+}
+
 // ---- Integrate ----
 void step()
 {
@@ -238,7 +308,14 @@ void step()
 	std::mt19937 gen(rd());
 	uniform_real_distribution<double> uniform(-1.0,1.0);
 
-	wca_neigh();
+	if (potential=="wca")
+	{
+		wca_neigh();
+	}
+	else if (potential=="att")
+	{
+		att_neigh();
+	}
 	for (int i=0;i<N;i++)
 	{	
 		pair<double,double> fcon = confine(x[i],y[i]);
@@ -279,18 +356,20 @@ void write(ofstream& OUT)
 int main(int argc, char *argv[])
 {
 	readParameters(argv[1]);
-	N = static_cast<int>(Phi*circumference/sig);
+	N = static_cast<int>(Phi*circumference/rcut);
 	fwca.resize(N, std::vector<double>(2, 0.0));
 	neigh.resize(N);
 	
 	srand(unsigned(time(0)));
 	initialize(N,rcon);
-	cout << outdir << endl;
-	ofstream OUT(outdir+"/"+"v"+to_string_with_precision(vexp,1)+"phi"+to_string_with_precision(Phi,1)+"f"+to_string_with_precision(f,1)+"al"+to_string_with_precision(al,1)+"_0.dat");
+	string fname = outdir+"/"+"v"+to_string_with_precision(vexp,1)+"phi"+to_string_with_precision(Phi,1)+"f"+to_string_with_precision(f,1)+"al"+to_string_with_precision(al,1);
+	if (potential=="att")
+	{
+		fname = outdir+"/"+"v"+to_string_with_precision(vexp,1)+"phi"+to_string_with_precision(Phi,1)+"f"+to_string_with_precision(f,1)+"al"+to_string_with_precision(al,1)+"weps"+to_string_with_precision(whdf_eps,1)+"rc"+to_string_with_precision(whdf_rcut,2);
+	}
+	ofstream OUT(fname+"_0.dat");
 	write(OUT);
 	OUT.close();
-
-	cout << cycle_steps << "\t" << run_steps << endl;	
 
 	// reach steady state
 	int steady_steps = static_cast<unsigned long int>(2/dt);
@@ -305,7 +384,7 @@ int main(int argc, char *argv[])
 	{
 		if((i%cycle_steps)==0)
 		{
-			ofstream OUT(outdir+"/"+"v"+to_string_with_precision(vexp,1)+"phi"+to_string_with_precision(Phi,1)+"f"+to_string_with_precision(f,1)+"al"+to_string_with_precision(al,1)+"_"+to_string(j)+".dat");
+			ofstream OUT(fname+"_"+to_string(j)+".dat");
 			write(OUT);
 			OUT.close();
 			j+=1;
