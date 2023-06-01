@@ -61,6 +61,8 @@ double whdf_rcut;
 double whdf_eps;
 double frcut;
 double al;
+double al_r;
+double kap;
 double vexp;
 double v0;
 double D0;
@@ -91,6 +93,7 @@ int run_steps;
 vector<double> x;
 vector<double> y;
 vector<double> phi;
+vector<double> torque;
 vector<vector<double> > fwca; 
 vector<int> neigh;
 
@@ -114,6 +117,8 @@ void readParameters(const char* ParameterFile)
 		else if (param=="whdf_eps") {whdf_eps=stod(value);}
 		else if (param=="frcut") {frcut=stod(value);}
 		else if (param=="al") {al=stod(value);}
+		else if (param=="al_r") {al_r=stod(value);}
+		else if (param=="kap") {kap=stod(value);}
 		else if (param=="v0") {vexp=stod(value);}
 		else if (param=="D0") {D0=stod(value);}
 		else if (param=="taur") {taur=stod(value);}
@@ -213,9 +218,10 @@ void wca_neigh()
 {
 	for(int i=0;i<N;i++)
 	{
-		fwca[i][0]=0.0; // reset forces and neighbours to 0
-		fwca[i][1]=0.0;
+		fwca[i][0] = 0.0; // reset forces and neighbours to 0
+		fwca[i][1] = 0.0;
 		neigh[i] = 0;
+		torque[i] = 0.0;
 	} 
 	vector<double> dr(2, 0.0);
 	for(int i=0;i<N;i++)
@@ -236,7 +242,13 @@ void wca_neigh()
 					fwca[i][k] += dr[k] * (fij / r2);
 					fwca[j][k] -= dr[k] * (fij / r2);
 				}
-				
+				double dotprod = cos(phi[i])*cos(phi[j]) + sin(phi[i])*sin(phi[j]);
+				if (dotprod<0)
+				{
+					double tor = kap*sin(2*(phi[j]-phi[i]));
+					torque[i] -= tor;
+					torque[j] += tor;
+				}
 			}
 
 			// neighbours
@@ -254,9 +266,10 @@ void att_neigh()
 {
 	for(int i=0;i<N;i++)
 	{
-		fwca[i][0]=0.0; // reset forces and neighbours to 0
-		fwca[i][1]=0.0;
+		fwca[i][0] = 0.0; // reset forces and neighbours to 0
+		fwca[i][1] = 0.0;
 		neigh[i] = 0;
+		torque[i] = 0.0;
 	} 
 	vector<double> dr(2, 0.0);
 	for(int i=0;i<N;i++)
@@ -277,7 +290,13 @@ void att_neigh()
 					fwca[i][k] += dr[k] * (fij / r2);
 					fwca[j][k] -= dr[k] * (fij / r2);
 				}
-				
+				double dotprod = cos(phi[i])*cos(phi[j]) + sin(phi[i])*sin(phi[j]);
+				if (dotprod<0)
+				{
+					double tor = kap*sin(2*(phi[j]-phi[i]));
+					torque[i] -= tor;
+					torque[j] += tor;
+				}
 			}
 			else if ((r2>=rcut2)&&(r2<whdf_rcut2)) // WHDF attraction
 			{
@@ -288,6 +307,13 @@ void att_neigh()
 				{
 					fwca[i][k] += dr[k] * fij;
 					fwca[j][k] -= dr[k] * fij;
+				}
+				double dotprod = cos(phi[i])*cos(phi[j]) + sin(phi[i])*sin(phi[j]);
+				if (dotprod<0)
+				{
+					double tor = kap*sin(2*(phi[j]-phi[i]));
+					torque[i] -= tor;
+					torque[j] += tor;
 				}
 			}
 
@@ -321,10 +347,16 @@ void step()
 		pair<double,double> fcon = confine(x[i],y[i]);
 		vector<double> fc = fwca[i];
 		double Dfact = 1.0 - al * neigh[i] / (4*(frcut2-0.25));
+		double Dr_fact = 1.0 - al_r * neigh[i] / (4*(frcut2-0.25));
 		
 		if (Dfact<0)
 		{
 			cout << "Negative diffusion coefficient. alpha is too large." << endl;
+			exit(0);
+		}
+		if (Dr_fact<0)
+		{
+			cout << "Negative rotational diffusion coefficient. alpha (rotational) is too large." << endl;
 			exit(0);
 		}
 
@@ -339,7 +371,7 @@ void step()
 
 		x[i] = x[i] + dx;
 		y[i] = y[i] + dy;
-		phi[i] = phi[i] + rdiff*uniform(gen);
+		phi[i] = phi[i] + torque[i]*dt + rdiff*sqrt(Dr_fact)*uniform(gen);
 	}
 }
 
@@ -359,20 +391,21 @@ int main(int argc, char *argv[])
 	N = static_cast<int>(Phi*circumference/rcut);
 	fwca.resize(N, std::vector<double>(2, 0.0));
 	neigh.resize(N);
+	torque.resize(N);
 	
 	srand(unsigned(time(0)));
 	initialize(N,rcon);
-	string fname = outdir+"/"+"v"+to_string_with_precision(vexp,1)+"phi"+to_string_with_precision(Phi,1)+"f"+to_string_with_precision(f,1)+"al"+to_string_with_precision(al,1);
+	string fname = outdir+"/"+"v"+to_string_with_precision(vexp,1)+"phi"+to_string_with_precision(Phi,1)+"f"+to_string_with_precision(f,1)+"al"+to_string_with_precision(al,1)+"alr"+to_string_with_precision(al_r,1)+"kap"+to_string_with_precision(kap,1);
 	if (potential=="att")
 	{
-		fname = outdir+"/"+"v"+to_string_with_precision(vexp,1)+"phi"+to_string_with_precision(Phi,1)+"f"+to_string_with_precision(f,1)+"al"+to_string_with_precision(al,1)+"weps"+to_string_with_precision(whdf_eps,1)+"rc"+to_string_with_precision(whdf_rcut,2);
+		fname = outdir+"/"+"v"+to_string_with_precision(vexp,1)+"phi"+to_string_with_precision(Phi,1)+"f"+to_string_with_precision(f,1)+"al"+to_string_with_precision(al,1)+"alr"+to_string_with_precision(al_r,1)+"weps"+to_string_with_precision(whdf_eps,1)+"rc"+to_string_with_precision(whdf_rcut,2)+"kap"+to_string_with_precision(kap,1);
 	}
 	ofstream OUT(fname+"_0.dat");
 	write(OUT);
 	OUT.close();
 
 	// reach steady state
-	int steady_steps = static_cast<unsigned long int>(2/dt);
+	int steady_steps = static_cast<unsigned long int>(10/dt);
 	for(int i=0;i<steady_steps;i++)
 	{
 		step();

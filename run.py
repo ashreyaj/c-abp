@@ -7,14 +7,16 @@ import units
 parameters = units.get_parameters()
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('-phi',type=float,default=1.0,help='packing fraction')
+parser.add_argument('-phi',type=float,default=1.2,help='packing fraction')
 parser.add_argument('-v',type=float,default=0.1,help='propulsion speed')
-parser.add_argument('-f',type=float,default=300.0,help='constant force outside channel')
-parser.add_argument('-al',type=float,default=1.0,help='slowdown factor')
+parser.add_argument('-f',type=float,default=500.0,help='constant force outside channel')
+parser.add_argument('-al',type=float,default=0.0,help='slowdown factor (translational diffusion)')
+parser.add_argument('-alr',type=float,default=0.0,help='slowdown factor (rotational diffusion)')
+parser.add_argument('-kap',type=float,default=1.0,help='alignment strength')
 parser.add_argument('-eps',type=float,default=100.0,help='energy scale of WCA')
-parser.add_argument('-weps',type=float,default=100.0,help='energy scale of WHDF')
+parser.add_argument('-weps',type=float,default=0.0,help='energy scale of WHDF')
 parser.add_argument('-cycle',type=float,default=0.1,help='cycle time')
-parser.add_argument('-run',type=int,default=20,help='total run time')
+parser.add_argument('-run',type=int,default=50,help='total run time')
 parser.add_argument('-dt',type=float,default=2e-5,help='time step')
 parser.add_argument('-outdir',type=str,default='./out',help='output directory')
 parser.add_argument('-potential',type=str,default='wca',help='interaction potential')
@@ -33,6 +35,8 @@ eps = args.eps
 whdf_eps = args.weps
 frcut = 1.5*rcut
 al = args.al
+al_r = args.alr
+kap = args.kap
 D0 = parameters['Dt']
 taur = 1./parameters['Dr']
 rcon = parameters['rcon']
@@ -40,9 +44,9 @@ width = parameters['width']
 run = args.run
 cycle = args.cycle
 
-filename = 'v{}phi{}f{}al{}'.format(args.v,phi,force,al)
+filename = 'v{}phi{}f{}al{}alr{}kap{}'.format(args.v,phi,force,al,al_r,kap)
 if potential=="att":
-    filename = 'v{}phi{}f{}al{}weps{}rc{}'.format(args.v,phi,force,al,whdf_eps,whdf_rcut)
+    filename = 'v{}phi{}f{}al{}alr{}weps{}rc{}kap{}'.format(args.v,phi,force,al,al_r,whdf_eps,whdf_rcut,kap)
 f = open(filename+'.par','w')
 f.write("outdir\t{}\n".format(outdir))
 f.write("potential\t{}\n".format(potential))
@@ -54,6 +58,8 @@ f.write("whdf_rcut\t{}\n".format(whdf_rcut))
 f.write("whdf_eps\t{}\n".format(whdf_eps))
 f.write("frcut\t{}\n".format(frcut))
 f.write("al\t{}\n".format(al))
+f.write("al_r\t{}\n".format(al_r))
+f.write("kap\t{}\n".format(kap))
 f.write("v0\t{}\n".format(v))
 f.write("D0\t{}\n".format(D0))
 f.write("taur\t{}\n".format(taur))
