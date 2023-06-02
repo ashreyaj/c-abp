@@ -63,7 +63,7 @@ double frcut;
 double al;
 double al_r;
 double kap;
-double vexp;
+string vexp;
 double v0;
 double D0;
 double taur;
