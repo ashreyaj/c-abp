@@ -119,7 +119,7 @@ void readParameters(const char* ParameterFile)
 		else if (param=="al") {al=stod(value);}
 		else if (param=="al_r") {al_r=stod(value);}
 		else if (param=="kap") {kap=stod(value);}
-		else if (param=="v0") {vexp=stod(value);}
+		else if (param=="v0") {vexp=value;}
 		else if (param=="D0") {D0=stod(value);}
 		else if (param=="taur") {taur=stod(value);}
 		else if (param=="rcon") {rcon=stod(value);}
@@ -134,7 +134,7 @@ void readParameters(const char* ParameterFile)
 	IN.close();
 	
 	// derived parameters
-	v0 = vexp*1e-6*t0/l0;
+	v0 = stod(vexp)*1e-6*t0/l0;
 	rcut2 = rcut*rcut;
 	whdf_rcut2 = whdf_rcut*whdf_rcut;
 	whdf_sig = whdf_rcut*rcut*sqrt(2.0/(3*whdf_rcut2-rcut2));
@@ -395,10 +395,10 @@ int main(int argc, char *argv[])
 	
 	srand(unsigned(time(0)));
 	initialize(N,rcon);
-	string fname = outdir+"/"+"v"+to_string_with_precision(vexp,1)+"phi"+to_string_with_precision(Phi,1)+"f"+to_string_with_precision(f,1)+"al"+to_string_with_precision(al,1)+"alr"+to_string_with_precision(al_r,1)+"kap"+to_string_with_precision(kap,1);
+	string fname = outdir+"/"+"v"+vexp+"phi"+to_string_with_precision(Phi,1)+"f"+to_string_with_precision(f,1)+"al"+to_string_with_precision(al,1)+"alr"+to_string_with_precision(al_r,1)+"kap"+to_string_with_precision(kap,1);
 	if (potential=="att")
 	{
-		fname = outdir+"/"+"v"+to_string_with_precision(vexp,1)+"phi"+to_string_with_precision(Phi,1)+"f"+to_string_with_precision(f,1)+"al"+to_string_with_precision(al,1)+"alr"+to_string_with_precision(al_r,1)+"weps"+to_string_with_precision(whdf_eps,1)+"rc"+to_string_with_precision(whdf_rcut,2)+"kap"+to_string_with_precision(kap,1);
+		fname = outdir+"/"+"v"+vexp+"phi"+to_string_with_precision(Phi,1)+"f"+to_string_with_precision(f,1)+"al"+to_string_with_precision(al,1)+"alr"+to_string_with_precision(al_r,1)+"weps"+to_string_with_precision(whdf_eps,1)+"rc"+to_string_with_precision(whdf_rcut,2)+"kap"+to_string_with_precision(kap,1);
 	}
 	ofstream OUT(fname+"_0.dat");
 	write(OUT);
