@@ -1,4 +1,5 @@
 *.par
 *.sh
+.vscode/
 out/
 __pycache__
